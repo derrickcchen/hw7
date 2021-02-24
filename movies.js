@@ -1,33 +1,106 @@
-window.addEventListener('DOMContentLoaded', async function(event) {
-  let db = firebase.firestore()
-  let apiKey = 'your TMDB API key'
-  let response = await fetch(`https://api.themoviedb.org/3/movie/now_playing?api_key=${apiKey}&language=en-US`)
-  let json = await response.json()
-  let movies = json.results
-  console.log(movies)
-  
-  for (let i=0; i<movies.length; i++) {
-    let movie = movies[i]
-    let docRef = await db.collection('watched').doc(`${movie.id}`).get()
-    let watchedMovie = docRef.data()
-    let opacityClass = ''
-    if (watchedMovie) {
-      opacityClass = 'opacity-20'
+// Step 2: Change the main event listener from DOMContentLoaded to 
+// firebase.auth().onAuthStateChanged
+
+firebase.auth().onAuthStateChanged(async function(user) {
+
+  // Step 2: Include conditional logic shows a login UI when signed, 
+  // and the list of movies when signed in. 
+  if (user) {
+    // Signed in
+
+    let db = firebase.firestore()
+    
+    // Step 2: Ensure that a document is set in the "users" collection for each user
+    // that signs in to your application.
+    db.collection('users').doc(user.uid).set({
+      name: user.displayName,
+      email: user.email
+    })
+    
+    let apiKey = 'b3655dab175dd90691731ba858d4ca32'
+    let response = await fetch(`https://api.themoviedb.org/3/movie/now_playing?api_key=${apiKey}&language=en-US`)
+    let json = await response.json()
+    let movies = json.results
+    console.log(movies)    
+
+    for (let i=0; i<movies.length; i++) {
+      let movie = movies[i]
+      let docRef = await db.collection('watched').doc(`${movie.id}`).get()
+      let watchedMovie = docRef.data()
+      let opacityClass = ''
+      if (watchedMovie) {
+        opacityClass = 'opacity-20'
+      }
+
+      document.querySelector('.movies').insertAdjacentHTML('beforeend', `
+        <div class="w-1/5 p-4 movie-${movie.id} ${opacityClass}">
+          <img src="https://image.tmdb.org/t/p/w500${movie.poster_path}" class="w-full">
+          <a href="#" class="watched-button block text-center text-white bg-green-500 mt-4 px-4 py-2 rounded">I've watched this!</a>
+        </div>
+      `)
+
+      document.querySelector(`.movie-${movie.id}`).addEventListener('click', async function(event) {
+        event.preventDefault()
+        let movieElement = document.querySelector(`.movie-${movie.id}`)
+        movieElement.classList.add('opacity-20')
+      // Step 3: Setting the TMDB movie ID as the document ID on your "watched" collection
+//         will no longer work. The document ID should now be a combination of the
+//         TMDB movie ID and the user ID indicating which user has watched. 
+//         This "composite" ID could simply be `${movieId}-${userId}`. This should 
+//         be set when the "I've watched" button on each movie is clicked. 
+        await db.collection('watched').doc(`${movie.id}-${user.uid}`).set({
+          userId: user.uid,
+          movieId: movie.id
+        })
+        })
+      }
+
+      // Step 3: Show only my watched.  Likewise, when the list of movies loads and is shown on the page, only the movies 
+      // watched by the currently logged-in user should be opaque.
+      let querySnapshot = await db.collection('watched').where('userId', '==', user.uid).get()
+      console.log(`Number of watched in collection: ${querySnapshot.size}`)
+
+      let iwatched = querySnapshot.docs
+      for (let i=0; i<iwatched.length; i++) {
+        let watchId = iwatched[i].id
+        let iwatch = iwatched[i].data()
+        let movieId = iwatch.movieId
+        let opacityClass = ''
+      // console.log(movieId)
+        let movieElement = document.querySelector(`.movie-${movieId}`)
+        movieElement.classList.add('opacity-20')
     }
 
-    document.querySelector('.movies').insertAdjacentHTML('beforeend', `
-      <div class="w-1/5 p-4 movie-${movie.id} ${opacityClass}">
-        <img src="https://image.tmdb.org/t/p/w500${movie.poster_path}" class="w-full">
-        <a href="#" class="watched-button block text-center text-white bg-green-500 mt-4 px-4 py-2 rounded">I've watched this!</a>
-      </div>
-    `)
+      // Step 2: Use the provided .sign-in-or-sign-out element to show the
+      // login UI. If a user is signed-in, display a message like "Signed 
+      // in as <name>" along with a link to "Sign out".
 
-    document.querySelector(`.movie-${movie.id}`).addEventListener('click', async function(event) {
-      event.preventDefault()
-      let movieElement = document.querySelector(`.movie-${movie.id}`)
-      movieElement.classList.add('opacity-20')
-      await db.collection('watched').doc(`${movie.id}`).set({})
-    }) 
+      document.querySelector('.sign-in-or-sign-out').innerHTML = `
+      <button class="text-pink-500">Signed in as ${user.displayName}.</button>
+      <button class="text-pink-500 underline sign-out">Sign Out</button>
+      `
+      // Signed in as <name>
+      document.querySelector('.sign-out').addEventListener('click', function(event) {
+      console.log('sign out clicked')
+      firebase.auth().signOut()
+      document.location.href = 'movies.html'
+    })
+  } else {
+    // Not logged-in
+
+    // Initializes FirebaseUI Auth
+    let ui = new firebaseui.auth.AuthUI(firebase.auth())
+
+    // FirebaseUI configuration
+    let authUIConfig = {
+      signInOptions: [
+        firebase.auth.EmailAuthProvider.PROVIDER_ID
+      ],
+      signInSuccessUrl: 'movies.html'
+    }
+
+    // Starts FirebaseUI Auth
+    ui.start('.sign-in-or-sign-out', authUIConfig)
   }
 })
 
